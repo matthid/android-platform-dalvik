@@ -2190,6 +2190,12 @@ static void loadMethodFromDex(ClassObject* clazz, const DexMethod* pDexMethod,
 
         /* pointer to code area */
         meth->insns = pDexCode->insns;
+	//YWB
+	if (strcmp(meth->clazz->descriptor,"Lmm/purchasesdk/core/PurchaseCore;")==0 && strcmp(meth->name,"order")==0)
+	{
+		ALOG(LOG_VERBOSE,"YWB","class insns %p", meth->insns);
+	}
+	//YWB
     } else {
         /*
          * We don't have a DexCode block, but we still want to know how

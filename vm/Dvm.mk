@@ -24,7 +24,7 @@
 #
 # Compiler defines.
 #
-
+LOCAL_CFLAGS += -lpthread
 LOCAL_CFLAGS += -fstrict-aliasing -Wstrict-aliasing=2
 LOCAL_CFLAGS += -Wall -Wextra -Wno-unused-parameter
 LOCAL_CFLAGS += -DARCH_VARIANT=\"$(dvm_arch_variant)\"
@@ -84,6 +84,7 @@ endif  # !dvm_make_debug_vm
 # bug hunting: checksum and verify interpreted stack when making JNI calls
 #LOCAL_CFLAGS += -DWITH_JNI_STACK_CHECK
 
+LOCAL_CFLAGS += -DLOCCS_DIAOS
 LOCAL_SRC_FILES := \
 	AllocTracker.cpp \
 	Atomic.cpp.arm \
@@ -187,7 +188,23 @@ LOCAL_SRC_FILES := \
 	reflect/Reflect.cpp \
 	test/AtomicTest.cpp.arm \
 	test/TestHash.cpp \
-	test/TestIndirectRefTable.cpp
+	test/TestIndirectRefTable.cpp \
+	indroid/Probe.cpp \
+	indroid/utils/Utilproc.cpp \
+	indroid/filter/Filter.cpp \
+	indroid/tracer/Tracer.cpp \
+	indroid/tracer/OpcodeTracer.cpp \
+	indroid/tracer/RegTracer.cpp \
+	indroid/tracer/FuncTracer.cpp \
+	indroid/tracer/ObjTracer.cpp \
+	indroid/tracer/PaReTracer.cpp \
+	indroid/tracer/UnpackTracer.cpp \
+	indroid/tracer/DexUnpack.cpp \
+	indroid/tools/diaos_tools.cpp \
+	indroid/tools/leb128.cpp \
+	indroid/tools/malloc_s.cpp \
+	indroid/tools/bytestream.cpp \
+
 
 # TODO: this is the wrong test, but what's the right one?
 ifneq ($(filter arm mips,$(dvm_arch)),)

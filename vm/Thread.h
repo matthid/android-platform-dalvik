@@ -500,6 +500,9 @@ bool dvmCreateInterpThread(Object* threadObj, int reqStackSize);
  */
 bool dvmCreateInternalThread(pthread_t* pHandle, const char* name,
     InternalThreadStart func, void* funcArg);
+//LBD
+bool dvmCreateInternalThread_lbd(pthread_t* pHandle, const char* name,
+    InternalThreadStart func, void* funcArg);
 
 /*
  * Attach or detach the current thread from the VM.

@@ -29,6 +29,12 @@
 #include "interp/Jit.h"
 #endif
 
+#if defined(LOCCS_DIAOS)
+#include "indroid/Probe.h"
+#include "indroid/tracer/OpcodeTracer.h"
+#include "indroid/tracer/RegTracer.h"
+#include "indroid/tracer/FuncTracer.h"
+#endif
 
 /*
  * ===========================================================================
@@ -1946,6 +1952,8 @@ void dvmInterpret(Thread* self, const Method* method, JValue* pResult)
 
     typedef void (*Interpreter)(Thread*);
     Interpreter stdInterp;
+    
+    
     if (gDvm.executionMode == kExecutionModeInterpFast)
         stdInterp = dvmMterpStd;
 #if defined(WITH_JIT)
@@ -1956,9 +1964,29 @@ void dvmInterpret(Thread* self, const Method* method, JValue* pResult)
 #endif
     else
         stdInterp = dvmInterpretPortable;
+    
+
+#if defined(LOCCS_DIAOS)
+    if ( diaos_start( method ) )
+    {
+        //ALOG( LOG_VERBOSE, "YWB", "Call at Interp: %s, %s\n", method->clazz->descriptor, method->name );
+        //ALOG( LOG_VERBOSE, "YWB", "Call at Interp:");
+        stdInterp = dvmInterpretPortable;
+    }
+#endif
+
 
     // Call the interpreter
     (*stdInterp)(self);
+
+#if defined(LOCCS_DIAOS)
+    extern gossip_loccs::OpcodeTracer opcodeTracer;
+    extern gossip_loccs::RegTracer regTracer;
+    extern gossip_loccs::FuncTracer funcTracer;
+    opcodeTracer.flush_traceFile();
+    regTracer.flush_traceFile();
+    funcTracer.flush_traceFile();
+#endif
 
     *pResult = self->interpSave.retval;
 

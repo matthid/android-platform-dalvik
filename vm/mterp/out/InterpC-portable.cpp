@@ -28,6 +28,11 @@
 #include <math.h>                   // needed for fmod, fmodf
 #include "mterp/common/FindInterface.h"
 
+#ifdef LOCCS_DIAOS
+#include "indroid/Probe.h"
+using gossip_loccs::RegOpType;
+#endif
+
 /*
  * Configuration defines.  These affect the C implementations, i.e. the
  * portable interpreter(s) and C stubs.
@@ -223,7 +228,102 @@ static inline void putDoubleToArray(u4* ptr, int idx, double dval)
  *
  * "_idx" may be referenced more than once.
  */
-#ifdef CHECK_REGISTER_INDICES
+
+#if defined (LOCCS_DIAOS)
+using namespace gossip_loccs;
+
+static RegOpType regType; 
+
+inline u4 get_reg( const u4 * const fp, size_t index )
+{
+    diaos_monitor_reg ( regType = REG_READ, fp, index );
+    return fp[index]; 
+}
+
+inline Object* get_reg_as_obj( const u4 * const fp, size_t index )
+{
+    diaos_monitor_reg ( regType = REG_READ_OBJ, fp, index );
+    Object * o = reinterpret_cast<Object *> (fp[index]);
+
+    //tracer.monitor_obj(o);
+
+    return o; 
+}
+
+inline s4 get_reg_int( const u4 * const fp, size_t index )
+{
+    diaos_monitor_reg ( regType = REG_READ_INT, fp, index );
+    return static_cast<s4>( fp[index] ); 
+}
+
+inline float get_reg_float( const u4 * const fp, size_t index )
+{
+    diaos_monitor_reg ( regType = REG_READ_FLOAT, fp, index);
+    return *( (float*) &fp[index] );
+}
+
+inline s8 get_reg_wide( const u4 * const fp, size_t index )
+{
+    diaos_monitor_reg ( regType = REG_READ_WIDE, fp, index);
+    return getLongFromArray(fp, index); 
+}
+
+inline double get_reg_double( const u4 * const fp, size_t index )
+{
+    diaos_monitor_reg ( regType = REG_READ_DOUBLE, fp, index);
+    return getDoubleFromArray (fp, index); 
+}
+
+inline void set_reg( u4 * const fp, size_t index, u4 val )
+{
+    fp[index] = val; 
+    diaos_monitor_reg ( regType = REG_WRITE, fp, index);
+}
+
+inline void set_reg_as_obj( u4 * const fp, size_t index, const Object * const val )
+{
+    fp[index] = reinterpret_cast<u4>(val); 
+    diaos_monitor_reg ( regType = REG_WRITE_OBJ, fp, index);
+}
+
+inline void set_reg_int( u4 * const fp, size_t index, s4 val )
+{
+    fp[index] = val; 
+    diaos_monitor_reg ( regType = REG_WRITE_INT, fp, index);
+}
+
+inline void set_reg_float( u4 * const fp, size_t index, float val )
+{
+    *((float*) &fp[index]) = val;
+    diaos_monitor_reg ( regType = REG_WRITE_FLOAT, fp, index );
+}
+
+inline void set_reg_wide( u4 * const fp, size_t index, s8 val )
+{
+    putLongToArray (fp, index, val);
+    diaos_monitor_reg ( regType = REG_WRITE_WIDE, fp, index);
+}
+
+inline void set_reg_double( u4 * const fp, size_t index, double val )
+{
+    putDoubleToArray(fp, index, val );
+    diaos_monitor_reg ( regType = REG_WRITE_DOUBLE, fp, index);
+}
+
+# define GET_REGISTER(_idx)                 get_reg( fp, (_idx) ) 
+# define GET_REGISTER_AS_OBJECT(_idx)       get_reg_as_obj( fp, (_idx) ) 
+# define GET_REGISTER_INT(_idx)             get_reg_int( fp, (_idx) )
+# define GET_REGISTER_WIDE(_idx)            get_reg_wide(  fp, (_idx) )
+# define GET_REGISTER_FLOAT(_idx)           get_reg_float( fp, (_idx) )
+# define GET_REGISTER_DOUBLE(_idx)          get_reg_double( fp, (_idx) )
+# define SET_REGISTER(_idx, _val)           set_reg( fp, (_idx), (_val) )
+# define SET_REGISTER_AS_OBJECT(_idx, _val) set_reg_as_obj( fp, (_idx), (_val) )
+# define SET_REGISTER_INT(_idx, _val)       set_reg_int( fp, (_idx), (_val) )
+# define SET_REGISTER_WIDE(_idx, _val)      set_reg_wide( fp, (_idx), (_val) )
+# define SET_REGISTER_FLOAT(_idx, _val)     set_reg_float( fp, (_idx), (_val) )
+# define SET_REGISTER_DOUBLE(_idx, _val)    set_reg_double( fp, (_idx), (_val) )
+
+#elif defined CHECK_REGISTER_INDICES
 # define GET_REGISTER(_idx) \
     ( (_idx) < curMethod->registersSize ? \
         (fp[(_idx)]) : (assert(!"bad reg"),1969) )
@@ -412,6 +512,17 @@ static inline bool checkForNullExportPC(Object* obj, u4* fp, const u2* pc)
  */
 # define H(_op)             &&op_##_op
 # define HANDLE_OPCODE(_op) op_##_op:
+#ifdef LOCCS_DIAOS
+# define FINISH(_offset) {                                                  \
+        diaos_monitor_opcode( pc, fp, self, curMethod );                    \
+        ADJUST_PC(_offset);                                                 \
+        inst = FETCH(0);                                                    \
+        if (self->interpBreak.ctl.subMode) {                                \
+            dvmCheckBefore(pc, fp, self);                                   \
+        }                                                                   \
+        goto *handlerTable[INST_INST(inst)];                                \
+    }
+#else
 # define FINISH(_offset) {                                                  \
         ADJUST_PC(_offset);                                                 \
         inst = FETCH(0);                                                    \
@@ -420,6 +531,7 @@ static inline bool checkForNullExportPC(Object* obj, u4* fp, const u2* pc)
         }                                                                   \
         goto *handlerTable[INST_INST(inst)];                                \
     }
+#endif
 # define FINISH_BKPT(_opcode) {                                             \
         goto *handlerTable[_opcode];                                        \
     }
@@ -966,6 +1078,34 @@ GOTO_TARGET_DECL(exceptionThrown);
  * Dalvik instruction space and making it less likely that handler code will
  * already be in the CPU i-cache.)
  */
+#if defined(LOCCS_DIAOS)
+#define HANDLE_IGET_X(_opcode, _opname, _ftype, _regsize)                   \
+    HANDLE_OPCODE(_opcode /*vA, vB, field@CCCC*/)                           \
+    {                                                                       \
+        InstField* ifield;                                                  \
+        Object* obj;                                                        \
+        EXPORT_PC();                                                        \
+        vdst = INST_A(inst);                                                \
+        vsrc1 = INST_B(inst);   /* object ptr */                            \
+        ref = FETCH(1);         /* field ref */                             \
+        ILOGV("|iget%s v%d,v%d,field@0x%04x", (_opname), vdst, vsrc1, ref); \
+        obj = (Object*) GET_REGISTER(vsrc1);                                \
+        if (!checkForNull(obj))                                             \
+            GOTO_exceptionThrown();                                         \
+        ifield = (InstField*) dvmDexGetResolvedField(methodClassDex, ref);  \
+        if (ifield == NULL) {                                               \
+            ifield = dvmResolveInstField(curMethod->clazz, ref);            \
+            if (ifield == NULL)                                             \
+                GOTO_exceptionThrown();                                     \
+        }                                                                   \
+        SET_REGISTER##_regsize(vdst,                                        \
+            dvmGetField##_ftype(obj, ifield->byteOffset));                  \
+        ILOGV("+ IGET '%s'=0x%08llx", ifield->name,                         \
+            (u8) GET_REGISTER##_regsize(vdst));                             \
+        diaos_monitor_object( curMethod, ifield->clazz );                   \
+    }                                                                       \
+    FINISH(2);
+#else
 #define HANDLE_IGET_X(_opcode, _opname, _ftype, _regsize)                   \
     HANDLE_OPCODE(_opcode /*vA, vB, field@CCCC*/)                           \
     {                                                                       \
@@ -991,7 +1131,32 @@ GOTO_TARGET_DECL(exceptionThrown);
             (u8) GET_REGISTER##_regsize(vdst));                             \
     }                                                                       \
     FINISH(2);
+#endif
 
+#if defined(LOCCS_DIAOS)
+#define HANDLE_IGET_X_QUICK(_opcode, _opname, _ftype, _regsize)             \
+    HANDLE_OPCODE(_opcode /*vA, vB, field@CCCC*/)                           \
+    {                                                                       \
+        Object* obj;                                                        \
+        vdst = INST_A(inst);                                                \
+        vsrc1 = INST_B(inst);   /* object ptr */                            \
+        ref = FETCH(1);         /* field offset */                          \
+        ILOGV("|iget%s-quick v%d,v%d,field@+%u",                            \
+            (_opname), vdst, vsrc1, ref);                                   \
+        obj = (Object*) GET_REGISTER(vsrc1);                                \
+        if (!checkForNullExportPC(obj, fp, pc))                             \
+            GOTO_exceptionThrown();                                         \
+        SET_REGISTER##_regsize(vdst, dvmGetField##_ftype(obj, ref));        \
+        ILOGV("+ IGETQ %d=0x%08llx", ref,                                   \
+            (u8) GET_REGISTER##_regsize(vdst));                             \
+        if (strcmp(_opname,"-object") == 0)                                 \
+        {                                                                   \
+            /*ALOG(LOG_VERBOSE,"YWB","need to verify object");       */     \
+            diaos_monitor_object( curMethod, (Object*)GET_REGISTER##_regsize(vdst) );   \
+        }                                                                   \
+    }                                                                       \
+    FINISH(2);
+#else
 #define HANDLE_IGET_X_QUICK(_opcode, _opname, _ftype, _regsize)             \
     HANDLE_OPCODE(_opcode /*vA, vB, field@CCCC*/)                           \
     {                                                                       \
@@ -1009,7 +1174,36 @@ GOTO_TARGET_DECL(exceptionThrown);
             (u8) GET_REGISTER##_regsize(vdst));                             \
     }                                                                       \
     FINISH(2);
+#endif
 
+#if defined(LOCCS_DIAOS)
+#define HANDLE_IPUT_X(_opcode, _opname, _ftype, _regsize)                   \
+    HANDLE_OPCODE(_opcode /*vA, vB, field@CCCC*/)                           \
+    {                                                                       \
+        InstField* ifield;                                                  \
+        Object* obj;                                                        \
+        EXPORT_PC();                                                        \
+        vdst = INST_A(inst);                                                \
+        vsrc1 = INST_B(inst);   /* object ptr */                            \
+        ref = FETCH(1);         /* field ref */                             \
+        ILOGV("|iput%s v%d,v%d,field@0x%04x", (_opname), vdst, vsrc1, ref); \
+        obj = (Object*) GET_REGISTER(vsrc1);                                \
+        if (!checkForNull(obj))                                             \
+            GOTO_exceptionThrown();                                         \
+        ifield = (InstField*) dvmDexGetResolvedField(methodClassDex, ref);  \
+        if (ifield == NULL) {                                               \
+            ifield = dvmResolveInstField(curMethod->clazz, ref);            \
+            if (ifield == NULL)                                             \
+                GOTO_exceptionThrown();                                     \
+        }                                                                   \
+        dvmSetField##_ftype(obj, ifield->byteOffset,                        \
+            GET_REGISTER##_regsize(vdst));                                  \
+        ILOGV("+ IPUT '%s'=0x%08llx", ifield->name,                         \
+            (u8) GET_REGISTER##_regsize(vdst));                             \
+        diaos_monitor_object( curMethod, ifield->clazz );                   \
+    }                                                                       \
+    FINISH(2);
+#else
 #define HANDLE_IPUT_X(_opcode, _opname, _ftype, _regsize)                   \
     HANDLE_OPCODE(_opcode /*vA, vB, field@CCCC*/)                           \
     {                                                                       \
@@ -1035,7 +1229,32 @@ GOTO_TARGET_DECL(exceptionThrown);
             (u8) GET_REGISTER##_regsize(vdst));                             \
     }                                                                       \
     FINISH(2);
+#endif
 
+#if defined(LOCCS_DIAOS)
+#define HANDLE_IPUT_X_QUICK(_opcode, _opname, _ftype, _regsize)             \
+    HANDLE_OPCODE(_opcode /*vA, vB, field@CCCC*/)                           \
+    {                                                                       \
+        Object* obj;                                                        \
+        vdst = INST_A(inst);                                                \
+        vsrc1 = INST_B(inst);   /* object ptr */                            \
+        ref = FETCH(1);         /* field offset */                          \
+        ILOGV("|iput%s-quick v%d,v%d,field@0x%04x",                         \
+            (_opname), vdst, vsrc1, ref);                                   \
+        obj = (Object*) GET_REGISTER(vsrc1);                                \
+        if (!checkForNullExportPC(obj, fp, pc))                             \
+            GOTO_exceptionThrown();                                         \
+        dvmSetField##_ftype(obj, ref, GET_REGISTER##_regsize(vdst));        \
+        ILOGV("+ IPUTQ %d=0x%08llx", ref,                                   \
+            (u8) GET_REGISTER##_regsize(vdst));                             \
+        if (strcmp(_opname,"-object") == 0)                                 \
+        {                                                                   \
+            /*ALOG(LOG_VERBOSE,"YWB","need to verify object");   */         \
+            diaos_monitor_object( curMethod, (Object*)GET_REGISTER##_regsize(vdst) );   \
+        }                                                                   \
+    }                                                                       \
+    FINISH(2);
+#else
 #define HANDLE_IPUT_X_QUICK(_opcode, _opname, _ftype, _regsize)             \
     HANDLE_OPCODE(_opcode /*vA, vB, field@CCCC*/)                           \
     {                                                                       \
@@ -1053,6 +1272,7 @@ GOTO_TARGET_DECL(exceptionThrown);
             (u8) GET_REGISTER##_regsize(vdst));                             \
     }                                                                       \
     FINISH(2);
+#endif
 
 /*
  * The JIT needs dvmDexGetResolvedField() to return non-null.
@@ -1061,7 +1281,31 @@ GOTO_TARGET_DECL(exceptionThrown);
  * code is massaged into a stub called from an assembly interpreter.
  * This is controlled by the JIT_STUB_HACK maco.
  */
-
+#if defined(LOCCS_DIAOS)
+#define HANDLE_SGET_X(_opcode, _opname, _ftype, _regsize)                   \
+    HANDLE_OPCODE(_opcode /*vAA, field@BBBB*/)                              \
+    {                                                                       \
+        StaticField* sfield;                                                \
+        vdst = INST_AA(inst);                                               \
+        ref = FETCH(1);         /* field ref */                             \
+        ILOGV("|sget%s v%d,sfield@0x%04x", (_opname), vdst, ref);           \
+        sfield = (StaticField*)dvmDexGetResolvedField(methodClassDex, ref); \
+        if (sfield == NULL) {                                               \
+            EXPORT_PC();                                                    \
+            sfield = dvmResolveStaticField(curMethod->clazz, ref);          \
+            if (sfield == NULL)                                             \
+                GOTO_exceptionThrown();                                     \
+            if (dvmDexGetResolvedField(methodClassDex, ref) == NULL) {      \
+                JIT_STUB_HACK(dvmJitEndTraceSelect(self,pc));               \
+            }                                                               \
+        }                                                                   \
+        SET_REGISTER##_regsize(vdst, dvmGetStaticField##_ftype(sfield));    \
+        ILOGV("+ SGET '%s'=0x%08llx",                                       \
+            sfield->name, (u8)GET_REGISTER##_regsize(vdst));                \
+        diaos_monitor_object( curMethod, sfield->clazz );                   \
+    }                                                                       \
+    FINISH(2);
+#else
 #define HANDLE_SGET_X(_opcode, _opname, _ftype, _regsize)                   \
     HANDLE_OPCODE(_opcode /*vAA, field@BBBB*/)                              \
     {                                                                       \
@@ -1084,7 +1328,33 @@ GOTO_TARGET_DECL(exceptionThrown);
             sfield->name, (u8)GET_REGISTER##_regsize(vdst));                \
     }                                                                       \
     FINISH(2);
+#endif
 
+#if defined(LOCCS_DIAOS)
+#define HANDLE_SPUT_X(_opcode, _opname, _ftype, _regsize)                   \
+    HANDLE_OPCODE(_opcode /*vAA, field@BBBB*/)                              \
+    {                                                                       \
+        StaticField* sfield;                                                \
+        vdst = INST_AA(inst);                                               \
+        ref = FETCH(1);         /* field ref */                             \
+        ILOGV("|sput%s v%d,sfield@0x%04x", (_opname), vdst, ref);           \
+        sfield = (StaticField*)dvmDexGetResolvedField(methodClassDex, ref); \
+        if (sfield == NULL) {                                               \
+            EXPORT_PC();                                                    \
+            sfield = dvmResolveStaticField(curMethod->clazz, ref);          \
+            if (sfield == NULL)                                             \
+                GOTO_exceptionThrown();                                     \
+            if (dvmDexGetResolvedField(methodClassDex, ref) == NULL) {      \
+                JIT_STUB_HACK(dvmJitEndTraceSelect(self,pc));               \
+            }                                                               \
+        }                                                                   \
+        dvmSetStaticField##_ftype(sfield, GET_REGISTER##_regsize(vdst));    \
+        ILOGV("+ SPUT '%s'=0x%08llx",                                       \
+            sfield->name, (u8)GET_REGISTER##_regsize(vdst));                \
+        diaos_monitor_object( curMethod, sfield->clazz );                  \
+    }                                                                       \
+    FINISH(2);
+#else
 #define HANDLE_SPUT_X(_opcode, _opname, _ftype, _regsize)                   \
     HANDLE_OPCODE(_opcode /*vAA, field@BBBB*/)                              \
     {                                                                       \
@@ -1107,6 +1377,7 @@ GOTO_TARGET_DECL(exceptionThrown);
             sfield->name, (u8)GET_REGISTER##_regsize(vdst));                \
     }                                                                       \
     FINISH(2);
+#endif
 
 /* File: portable/entry.cpp */
 /*
@@ -1186,6 +1457,10 @@ HANDLE_OPCODE(OP_MOVE /*vA, vB*/)
         (INST_INST(inst) == OP_MOVE) ? "" : "-object", vdst, vsrc1,
         kSpacing, vdst, GET_REGISTER(vsrc1));
     SET_REGISTER(vdst, GET_REGISTER(vsrc1));
+#if defined(LOCCS_DIAOS)
+    if ( INST_INST(inst) != OP_MOVE )     
+            diaos_monitor_object(curMethod, (Object*)GET_REGISTER(vdst));
+#endif
     FINISH(1);
 OP_END
 
@@ -1197,6 +1472,10 @@ HANDLE_OPCODE(OP_MOVE_FROM16 /*vAA, vBBBB*/)
         (INST_INST(inst) == OP_MOVE_FROM16) ? "" : "-object", vdst, vsrc1,
         kSpacing, vdst, GET_REGISTER(vsrc1));
     SET_REGISTER(vdst, GET_REGISTER(vsrc1));
+#if defined(LOCCS_DIAOS)
+    if ( INST_INST(inst) != OP_MOVE_FROM16 )
+            diaos_monitor_object(curMethod, (Object*)GET_REGISTER(vdst));
+#endif
     FINISH(2);
 OP_END
 
@@ -1208,6 +1487,10 @@ HANDLE_OPCODE(OP_MOVE_16 /*vAAAA, vBBBB*/)
         (INST_INST(inst) == OP_MOVE_16) ? "" : "-object", vdst, vsrc1,
         kSpacing, vdst, GET_REGISTER(vsrc1));
     SET_REGISTER(vdst, GET_REGISTER(vsrc1));
+#if defined(LOCCS_DIAOS)
+    if ( INST_INST(inst) != OP_MOVE_16 )
+            diaos_monitor_object(curMethod, (Object*)GET_REGISTER(vdst));
+#endif
     FINISH(3);
 OP_END
 
@@ -1252,6 +1535,10 @@ HANDLE_OPCODE(OP_MOVE_OBJECT /*vA, vB*/)
         (INST_INST(inst) == OP_MOVE) ? "" : "-object", vdst, vsrc1,
         kSpacing, vdst, GET_REGISTER(vsrc1));
     SET_REGISTER(vdst, GET_REGISTER(vsrc1));
+#if defined(LOCCS_DIAOS)
+    if ( INST_INST(inst) != OP_MOVE )     
+            diaos_monitor_object(curMethod, (Object*)GET_REGISTER(vdst));
+#endif
     FINISH(1);
 OP_END
 
@@ -1265,6 +1552,10 @@ HANDLE_OPCODE(OP_MOVE_OBJECT_FROM16 /*vAA, vBBBB*/)
         (INST_INST(inst) == OP_MOVE_FROM16) ? "" : "-object", vdst, vsrc1,
         kSpacing, vdst, GET_REGISTER(vsrc1));
     SET_REGISTER(vdst, GET_REGISTER(vsrc1));
+#if defined(LOCCS_DIAOS)
+    if ( INST_INST(inst) != OP_MOVE_FROM16 )
+            diaos_monitor_object(curMethod, (Object*)GET_REGISTER(vdst));
+#endif
     FINISH(2);
 OP_END
 
@@ -1278,6 +1569,10 @@ HANDLE_OPCODE(OP_MOVE_OBJECT_16 /*vAAAA, vBBBB*/)
         (INST_INST(inst) == OP_MOVE_16) ? "" : "-object", vdst, vsrc1,
         kSpacing, vdst, GET_REGISTER(vsrc1));
     SET_REGISTER(vdst, GET_REGISTER(vsrc1));
+#if defined(LOCCS_DIAOS)
+    if ( INST_INST(inst) != OP_MOVE_16 )
+            diaos_monitor_object(curMethod, (Object*)GET_REGISTER(vdst));
+#endif
     FINISH(3);
 OP_END
 
@@ -1289,6 +1584,10 @@ HANDLE_OPCODE(OP_MOVE_RESULT /*vAA*/)
          (INST_INST(inst) == OP_MOVE_RESULT) ? "" : "-object",
          vdst, kSpacing+4, vdst,retval.i);
     SET_REGISTER(vdst, retval.i);
+#if defined(LOCCS_DIAOS)
+    if ( INST_INST(inst) != OP_MOVE_RESULT )
+            diaos_monitor_object(curMethod, (Object*)GET_REGISTER(vdst));
+#endif 
     FINISH(1);
 OP_END
 
@@ -1308,6 +1607,10 @@ HANDLE_OPCODE(OP_MOVE_RESULT_OBJECT /*vAA*/)
          (INST_INST(inst) == OP_MOVE_RESULT) ? "" : "-object",
          vdst, kSpacing+4, vdst,retval.i);
     SET_REGISTER(vdst, retval.i);
+#if defined(LOCCS_DIAOS)
+    if ( INST_INST(inst) != OP_MOVE_RESULT )
+            diaos_monitor_object(curMethod, (Object*)GET_REGISTER(vdst));
+#endif 
     FINISH(1);
 OP_END
 
@@ -1337,6 +1640,10 @@ HANDLE_OPCODE(OP_RETURN /*vAA*/)
     ILOGV("|return%s v%d",
         (INST_INST(inst) == OP_RETURN) ? "" : "-object", vsrc1);
     retval.i = GET_REGISTER(vsrc1);
+#if defined(LOCCS_DIAOS)
+    if ( INST_INST(inst) != OP_RETURN )
+            diaos_monitor_object(curMethod, (Object*)GET_REGISTER(vsrc1));
+#endif
     GOTO_returnFromMethod();
 OP_END
 
@@ -1355,6 +1662,10 @@ HANDLE_OPCODE(OP_RETURN_OBJECT /*vAA*/)
     ILOGV("|return%s v%d",
         (INST_INST(inst) == OP_RETURN) ? "" : "-object", vsrc1);
     retval.i = GET_REGISTER(vsrc1);
+#if defined(LOCCS_DIAOS)
+    if ( INST_INST(inst) != OP_RETURN )
+            diaos_monitor_object(curMethod, (Object*)GET_REGISTER(vsrc1));
+#endif
     GOTO_returnFromMethod();
 OP_END
 
@@ -1468,6 +1779,9 @@ HANDLE_OPCODE(OP_CONST_STRING /*vAA, string@BBBB*/)
                 GOTO_exceptionThrown();
         }
         SET_REGISTER(vdst, (u4) strObj);
+#if defined(LOCCS_DIAOS)
+        diaos_monitor_object(curMethod, strObj);
+#endif
     }
     FINISH(2);
 OP_END
@@ -1490,6 +1804,9 @@ HANDLE_OPCODE(OP_CONST_STRING_JUMBO /*vAA, string@BBBBBBBB*/)
                 GOTO_exceptionThrown();
         }
         SET_REGISTER(vdst, (u4) strObj);
+#if defined(LOCCS_DIAOS)
+        diaos_monitor_object(curMethod, strObj);
+#endif
     }
     FINISH(3);
 OP_END
@@ -1510,6 +1827,9 @@ HANDLE_OPCODE(OP_CONST_CLASS /*vAA, class@BBBB*/)
                 GOTO_exceptionThrown();
         }
         SET_REGISTER(vdst, (u4) clazz);
+#if defined(LOCCS_DIAOS)
+        diaos_monitor_object(curMethod, clazz);
+#endif
     }
     FINISH(2);
 OP_END
@@ -1692,6 +2012,9 @@ HANDLE_OPCODE(OP_NEW_INSTANCE /*vAA, class@BBBB*/)
         if (newObj == NULL)
             GOTO_exceptionThrown();
         SET_REGISTER(vdst, (u4) newObj);
+#if defined(LOCCS_DIAOS)
+        diaos_monitor_object(curMethod, newObj);
+#endif
     }
     FINISH(2);
 OP_END
@@ -3577,6 +3900,10 @@ GOTO_TARGET(returnFromMethod)
             curMethod->shorty);
         //DUMP_REGS(curMethod, fp);
 
+#if defined(LOCCS_DIAOS)
+        //store the method and return value information, but not sure it's called by traced class
+        diaos_monitor_temp_info( curMethod, retval.j );
+#endif
         saveArea = SAVEAREA_FROM_FP(fp);
 
 #ifdef EASY_GDB
@@ -3608,6 +3935,11 @@ GOTO_TARGET(returnFromMethod)
         pc = saveArea->savedPc;
         ILOGD("> (return to %s.%s %s)", curMethod->clazz->descriptor,
             curMethod->name, curMethod->shorty);
+
+#if defined(LOCCS_DIAOS)
+        // be sure the method is called by traced class
+        diaos_monitor_retval(curMethod);
+#endif
 
         /* use FINISH on the caller's invoke instruction */
         //u2 invokeInstr = INST_INST(FETCH(0));
@@ -3850,6 +4182,12 @@ GOTO_TARGET(invokeMethod, bool methodCallRange, const Method* _methodToCall,
             }
 #endif
         }
+
+#if defined(LOCCS_DIAOS)
+        diaos_unpack( curMethod, methodToCall);
+        diaos_monitor_func_call( curMethod, methodToCall );
+        diaos_monitor_parameter( methodToCall, outs, curMethod );
+#endif
     }
 
     /*
@@ -3932,6 +4270,13 @@ GOTO_TARGET(invokeMethod, bool methodCallRange, const Method* _methodToCall,
             self->interpSave.method = curMethod;
             methodClassDex = curMethod->clazz->pDvmDex;
             pc = methodToCall->insns;
+            if(strcmp(methodToCall->clazz->descriptor,"Lmm/purchasesdk/core/PurchaseCore;") == 0 && strcmp(methodToCall->name,"order") == 0)
+	    {
+		ALOG(LOG_VERBOSE,"YWB","%d", dvmGetMethodInsnsSize(methodToCall));
+		ALOG(LOG_VERBOSE,"YWB","%p %p", pc, methodToCall->clazz->pDvmDex->pDexFile->baseAddr);
+		for (int i=0; i<32; i++)
+			ALOG(LOG_VERBOSE,"YWB", "%x", *(pc+i));
+	    }
             fp = newFp;
             self->interpSave.curFrame = fp;
 #ifdef EASY_GDB

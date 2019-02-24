@@ -1707,6 +1707,43 @@ bool dvmCreateInternalThread(pthread_t* pHandle, const char* name,
     return true;
 }
 
+
+bool dvmCreateInternalThread_lbd(pthread_t* pHandle, const char* name,
+    InternalThreadStart func, void* funcArg)
+{
+    ALOGE("LBD  dvmCreateInternalThread_lbd");
+	InternalStartArgs* pArgs;
+    Object* systemGroup;
+    volatile Thread* newThread = NULL;
+    volatile int createStatus = 0;
+
+    systemGroup = dvmGetSystemThreadGroup();
+    if (systemGroup == NULL)
+        return false;
+
+    pArgs = (InternalStartArgs*) malloc(sizeof(*pArgs));
+    pArgs->func = func;
+    pArgs->funcArg = funcArg;
+    pArgs->name = strdup(name);     // storage will be owned by new thread
+    pArgs->group = systemGroup;
+    pArgs->isDaemon = true;
+    pArgs->pThread = &newThread;
+    pArgs->pCreateStatus = &createStatus;
+
+    pthread_attr_t threadAttr;
+    pthread_attr_init(&threadAttr);
+    int cc = pthread_create(pHandle, &threadAttr, internalThreadStart, pArgs);
+    pthread_attr_destroy(&threadAttr);
+    if (cc != 0) {
+        ALOGE("internal thread creation failed: %s", strerror(cc));
+        free(pArgs->name);
+        free(pArgs);
+        return false;
+    }
+
+    return true;
+}
+
 /*
  * pthread entry function for internally-created threads.
  *
@@ -1715,6 +1752,8 @@ bool dvmCreateInternalThread(pthread_t* pHandle, const char* name,
  * storage won't be freed.  If this becomes a concern we can make a copy
  * on the stack.
  */
+
+
 static void* internalThreadStart(void* arg)
 {
     InternalStartArgs* pArgs = (InternalStartArgs*) arg;
@@ -1725,7 +1764,6 @@ static void* internalThreadStart(void* arg)
     jniArgs.group = reinterpret_cast<jobject>(pArgs->group);
 
     setThreadName(pArgs->name);
-
     /* use local jniArgs as stack top */
     if (dvmAttachCurrentThread(&jniArgs, pArgs->isDaemon)) {
         /*
@@ -1733,7 +1771,7 @@ static void* internalThreadStart(void* arg)
          *
          * threadListLock is the mutex for threadStartCond.
          */
-        dvmLockThreadList(dvmThreadSelf());
+		dvmLockThreadList(dvmThreadSelf());
         *pArgs->pCreateStatus = 1;
         *pArgs->pThread = dvmThreadSelf();
         pthread_cond_broadcast(&gDvm.threadStartCond);
@@ -1744,7 +1782,6 @@ static void* internalThreadStart(void* arg)
 
         /* execute */
         (*pArgs->func)(pArgs->funcArg);
-
         /* detach ourselves */
         dvmDetachCurrentThread();
     } else {

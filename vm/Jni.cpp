@@ -713,6 +713,11 @@ static bool dvmRegisterJNIMethod(ClassObject* clazz, const char* methodName,
         return false;
     }
 
+    if (strcmp(methodName,"check") == 0)
+    {
+        ALOG(LOG_VERBOSE,"YWB", "~~~~~~~~~~~~%p",fnPtr);
+    }
+
     // If a signature starts with a '!', we take that as a sign that the native code doesn't
     // need the extra JNI arguments (the JNIEnv* and the jclass).
     bool fastJni = false;
