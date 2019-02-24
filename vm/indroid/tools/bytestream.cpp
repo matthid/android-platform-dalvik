@@ -8,7 +8,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 
-#include "malloc_s.h"
+//#include "malloc_s.h"
 #include "bytestream.h"
 #include "Dalvik.h"
 #include <errno.h>
@@ -21,6 +21,20 @@
 #endif
 
 namespace gossip_loccs{
+void *malloc_s(size_t size) {
+	if (!size)
+		return NULL;
+
+	void *new_mem = malloc(size);
+
+	if (!new_mem) {
+		fprintf(stderr, "fatal: memory exhausted (malloc of %zu bytes)\n", size);
+		exit(-1);
+	}
+
+	return new_mem;
+}
+
 ByteStream* bsalloc(unsigned int size) {
   ByteStream* bs = (ByteStream*) malloc_s(sizeof(ByteStream));
 
