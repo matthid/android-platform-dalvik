@@ -202,7 +202,6 @@ LOCAL_SRC_FILES := \
 	indroid/tracer/DexUnpack.cpp \
 	indroid/tools/diaos_tools.cpp \
 	indroid/tools/leb128.cpp \
-	indroid/tools/malloc_s.cpp \
 	indroid/tools/bytestream.cpp \
 
 
