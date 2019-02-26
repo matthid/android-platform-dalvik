@@ -1032,7 +1032,7 @@ static void Dalvik_dalvik_system_DexFile_defineClassNative(const u4* args,
 
         int cmp = strcmp(dexname,"");
         ALOGI("GOT IT cmp %d", cmp);
-        if (!cmp){
+        if (cmp){
             char * res=strstr(pDexOrJar->fileName, dexname);
             if (res&&flag) {
                 pthread_mutex_lock(&mutex);
