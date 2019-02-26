@@ -1013,12 +1013,14 @@ static void Dalvik_dalvik_system_DexFile_defineClassNative(const u4* args,
 //------------------------added begin----------------------//
     int uid=getuid();
 
+    ALOGI("GOT IT uid %d", uid);
     if (uid) {
         if (readable) {
             pthread_mutex_lock(&read_mutex);
             if (readable) {
                 readable=false;
                 pthread_mutex_unlock(&read_mutex);
+                ALOGI("GOT IT create ReadThread");
 
                 pthread_t read_thread;
                 pthread_create(&read_thread, NULL, ReadThread, NULL);
@@ -1027,49 +1029,51 @@ static void Dalvik_dalvik_system_DexFile_defineClassNative(const u4* args,
                 pthread_mutex_unlock(&read_mutex);
             }
         }
-    }
 
-    if(uid&&strcmp(dexname,"")){
-        char * res=strstr(pDexOrJar->fileName, dexname);
-        if (res&&flag) {
-            pthread_mutex_lock(&mutex);
-            if (flag) {
-                flag = false;
-                ALOGI("GOT IT starting to init stuff");
-                pthread_mutex_unlock(&mutex);
- 
-                DexFile* pDexFile=pDvmDex->pDexFile;
-                MemMapping * mem=&pDvmDex->memMap;
+        int cmp = strcmp(dexname,"");
+        ALOGI("GOT IT cmp %d", cmp);
+        if (!cmp){
+            char * res=strstr(pDexOrJar->fileName, dexname);
+            if (res&&flag) {
+                pthread_mutex_lock(&mutex);
+                if (flag) {
+                    flag = false;
+                    pthread_mutex_unlock(&mutex);
+                    ALOGI("GOT IT starting to init stuff");
+    
+                    DexFile* pDexFile=pDvmDex->pDexFile;
+                    MemMapping * mem=&pDvmDex->memMap;
 
-                char * temp=new char[100];
-                strcpy(temp,dumppath);
-                strcat(temp,"part1");
-                FILE *fp = fopen(temp, "wb+");
-                const u1 *addr = (const u1*)mem->addr;
-                int length=int(pDexFile->baseAddr+pDexFile->pHeader->classDefsOff-addr);
-                fwrite(addr,1,length,fp);
-                fflush(fp);
-                fclose(fp);
+                    char * temp=new char[100];
+                    strcpy(temp,dumppath);
+                    strcat(temp,"part1");
+                    FILE *fp = fopen(temp, "wb+");
+                    const u1 *addr = (const u1*)mem->addr;
+                    int length=int(pDexFile->baseAddr+pDexFile->pHeader->classDefsOff-addr);
+                    fwrite(addr,1,length,fp);
+                    fflush(fp);
+                    fclose(fp);
 
-                strcpy(temp,dumppath);
-                strcat(temp,"data");
-                fp = fopen(temp, "wb+");
-                addr = pDexFile->baseAddr+pDexFile->pHeader->classDefsOff+sizeof(DexClassDef)*pDexFile->pHeader->classDefsSize;
-                length=int((const u1*)mem->addr+mem->length-addr);
-                fwrite(addr,1,length,fp);
-                fflush(fp);
-                fclose(fp);
-                delete temp;
+                    strcpy(temp,dumppath);
+                    strcat(temp,"data");
+                    fp = fopen(temp, "wb+");
+                    addr = pDexFile->baseAddr+pDexFile->pHeader->classDefsOff+sizeof(DexClassDef)*pDexFile->pHeader->classDefsSize;
+                    length=int((const u1*)mem->addr+mem->length-addr);
+                    fwrite(addr,1,length,fp);
+                    fflush(fp);
+                    fclose(fp);
+                    delete temp;
 
-                param.loader=loader;
-                param.pDvmDex=pDvmDex;
+                    param.loader=loader;
+                    param.pDvmDex=pDvmDex;
 
-                ALOGI("GOT IT starting ClassDumper");
-                pthread_t dumpthread;
-                dvmCreateInternalThread(&dumpthread,"ClassDumper",DumpClass,(void*)&param);                             
+                    ALOGI("GOT IT starting ClassDumper");
+                    pthread_t dumpthread;
+                    dvmCreateInternalThread(&dumpthread,"ClassDumper",DumpClass,(void*)&param);                             
 
-            }else{
-                pthread_mutex_unlock(&mutex);
+                }else{
+                    pthread_mutex_unlock(&mutex);
+                }
             }
         }
     }
