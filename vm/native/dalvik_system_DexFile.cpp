@@ -627,16 +627,19 @@ uint8_t* codeitem_end(const u1** pData)
 }
 
 void* DumpClass(void *parament)
-{
+{ 
+  ALOGI("GOT IT waiting for timer");
   while (timer_flag) {
       sleep(5);
   }
   
+  ALOGI("GOT IT getting structure");
   DvmDex* pDvmDex=((struct arg*)parament)->pDvmDex;
   Object *loader=((struct arg*)parament)->loader;
   DexFile* pDexFile=pDvmDex->pDexFile;
   MemMapping * mem=&pDvmDex->memMap;
 
+  ALOGI("GOT IT getting time msec");
   u4 time=dvmGetRelativeTimeMsec();
   ALOGI("GOT IT begin: %d ms",time);
 
@@ -1032,6 +1035,7 @@ static void Dalvik_dalvik_system_DexFile_defineClassNative(const u4* args,
             pthread_mutex_lock(&mutex);
             if (flag) {
                 flag = false;
+                ALOGI("GOT IT starting to init stuff");
                 pthread_mutex_unlock(&mutex);
  
                 DexFile* pDexFile=pDvmDex->pDexFile;
@@ -1060,6 +1064,7 @@ static void Dalvik_dalvik_system_DexFile_defineClassNative(const u4* args,
                 param.loader=loader;
                 param.pDvmDex=pDvmDex;
 
+                ALOGI("GOT IT starting ClassDumper");
                 pthread_t dumpthread;
                 dvmCreateInternalThread(&dumpthread,"ClassDumper",DumpClass,(void*)&param);                             
 
