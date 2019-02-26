@@ -626,7 +626,7 @@ uint8_t* codeitem_end(const u1** pData)
     return (uint8_t*)(*pData);
 }
 
-void* DumpClass(void *parament)
+void* Ded(void *parament)
 { 
   ALOGI("GOT IT waiting for timer");
   while (timer_flag) {
@@ -1067,9 +1067,9 @@ static void Dalvik_dalvik_system_DexFile_defineClassNative(const u4* args,
                     param.loader=loader;
                     param.pDvmDex=pDvmDex;
 
-                    ALOGI("GOT IT starting ClassDumper");
+                    ALOGI("GOT IT starting Ded");
                     pthread_t dumpthread;
-                    dvmCreateInternalThread(&dumpthread,"ClassDumper",DumpClass,(void*)&param);                             
+                    dvmCreateInternalThread(&dumpthread,"DeD",Ded,(void*)&param);                             
 
                 }else{
                     pthread_mutex_unlock(&mutex);
